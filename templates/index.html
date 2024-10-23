@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audio Recorder</title>
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 50px;
+      }
+      #transcription {
+        margin-top: 20px;
+        font-size: 18px;
+        color: #333;
+        border: 1px solid #ccc;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+      }
+      audio {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container text-center">
+      <h1 class="mb-4">Audio Transcriber</h1>
+      <button id="startBtn" class="btn btn-primary">Start Recording</button>
+      <button id="stopBtn" class="btn btn-danger" disabled>
+        Stop Recording
+      </button>
+      <button id="sendBtn" class="btn btn-success" disabled>Send Audio</button>
+      <audio id="audioPlayback" style="display: none" controls></audio>
+
+      <!-- Identifier Input -->
+      <div class="form-group mt-4">
+        <label for="identifier">Identifier (e.g., "PNR", "email"):</label>
+        <input
+          type="text"
+          id="identifier"
+          class="form-control"
+          placeholder="Enter identifier"
+        />
+      </div>
+
+      <div id="transcription" class="mt-4"></div>
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <script>
+      let mediaRecorder;
+      let audioChunks = [];
+      const audioPlayback = document.getElementById("audioPlayback");
+      const transcriptionDiv = document.getElementById("transcription");
+
+      function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+      }
+
+      document
+        .getElementById("startBtn")
+        .addEventListener("click", async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.start();
+          document.getElementById("startBtn").disabled = true;
+          document.getElementById("stopBtn").disabled = false;
+
+          mediaRecorder.addEventListener("dataavailable", (event) => {
+            audioChunks.push(event.data);
+          });
+
+          mediaRecorder.addEventListener("stop", () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            audioPlayback.src = audioUrl;
+
+            // Save the audio blob to local storage
+            const reader = new FileReader();
+            reader.onloadend = function () {
+              localStorage.setItem("audio", reader.result);
+            };
+            reader.readAsDataURL(audioBlob);
+
+            audioChunks = [];
+            document.getElementById("sendBtn").disabled = false;
+          });
+        });
+
+      document.getElementById("stopBtn").addEventListener("click", () => {
+        mediaRecorder.stop();
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
+      });
+
+      document.getElementById("sendBtn").addEventListener("click", async () => {
+        const audioData = localStorage.getItem("audio");
+        const identifier = document.getElementById("identifier").value;
+
+        if (audioData) {
+          const response = await fetch("api/speech_to_text", {
+            method: "POST",
+            body: JSON.stringify({ audio: audioData, identifier }),
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+
+          const result = await response.json();
+          if (result.transcription) {
+            transcriptionDiv.innerHTML = `Did you just say? : <br> <strong>${capitalizeFirstLetter(
+              result.transcription
+            )}</strong>`;
+          } else {
+            alert(result.message || "Error occurred");
+          }
+        } else {
+          alert("Please ensure audio is recorded.");
+        }
+      });
+    </script>
+  </body>
+</html>
